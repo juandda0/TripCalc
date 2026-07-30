@@ -1,0 +1,113 @@
+@import "tailwindcss" layer(tailwind);
+
+/* ── Design Tokens — Paleta minimalista ────────────────────────────────────── */
+@layer base {
+  :root {
+    --bg-primary:    #f9f9f9;
+    --bg-surface:    #ffffff;
+    --bg-subtle:     #f3f3f4;
+    --border-color:  #e8e8ea;
+    --text-primary:  #1a1a1a;
+    --text-secondary:#5c5c66;
+    --text-muted:    #9898a0;
+    --accent:        #2563eb;
+    --accent-hover:  #1d4ed8;
+    --accent-subtle: #eff6ff;
+  }
+
+  .dark {
+    --bg-primary:    #0f0f11;
+    --bg-surface:    #18181b;
+    --bg-subtle:     #202024;
+    --border-color:  #2d2d32;
+    --text-primary:  #f1f1f3;
+    --text-secondary:#9898a8;
+    --text-muted:    #64646e;
+    --accent:        #3b82f6;
+    --accent-hover:  #60a5fa;
+    --accent-subtle: #1e3356;
+  }
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ── Input base — NO pone padding horizontal aquí para que Tailwind/inline lo controle ── */
+.notion-input {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 8px;
+  /* Solo padding vertical aquí — el horizontal se pone inline o via Tailwind */
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  padding-left: 0.75rem;   /* default sin icono */
+  padding-right: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.notion-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+}
+
+.notion-input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ── Notion-style card ─────────────────────────────────────────────────────── */
+.notion-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+/* ── Leaflet overrides ─────────────────────────────────────────────────────── */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary);
+  font-family: inherit;
+}
+
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  opacity: 0.5;
+  background: transparent !important;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 2px;
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin { animation: spin 1s linear infinite; }
