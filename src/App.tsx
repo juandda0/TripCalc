@@ -1,22 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Motocicleta, ResultadoCalculo, ConfiguracionUsuario, TipoTrayecto } from './types/tripcalc';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { Vehiculo } from './types/tripcalc';
 import type { LocationResult, RouteResult } from './services/routeService';
 import type { LatLngTuple } from 'leaflet';
 import type { MonedaInfo } from './services/currencyService';
-import { MOTOCICLETAS_LOCAL_DB, consultarEspecificacionesConIA } from './services/motorcycleService';
+import { VEHICULOS_LOCAL_DB, consultarEspecificacionesConIA } from './services/vehicleService';
 import { obtenerRuta, geocodificacionReversa, obtenerCiudadDesdeCoords } from './services/routeService';
 import { getMonedaPorPais } from './services/currencyService';
-import { calcularRentabilidadCarrera, CONFIGURACION_DEFECTO } from './utils/calculatorEngine';
+import { calcularConsumoCombustible } from './utils/fuelCost';
 import { MapView } from './components/MapView';
 import { LocationSearch } from './components/LocationSearch';
-import { MotorcycleSelector } from './components/MotorcycleSelector';
-import { ProfitabilityCard } from './components/ProfitabilityCard';
+import { VehicleSelector } from './components/VehicleSelector';
+import { FuelCostCard } from './components/FuelCostCard';
 import { SettingsModal } from './components/SettingsModal';
 import { CityPicker } from './components/CityPicker';
 import { BottomSheet } from './components/BottomSheet';
 import {
-  Bike, Sun, Moon, Settings, ArrowRight, RefreshCw, Undo2,
-  Loader2, Calculator, Navigation, MapPin, AlertTriangle,
+  Bike, Car, Sun, Moon, Settings, Loader2, Calculator, Navigation, AlertTriangle,
 } from 'lucide-react';
 
 type GeoStep = 'requesting' | 'locating' | 'city_picker' | 'ready';
@@ -41,6 +40,7 @@ export function App() {
   const [ciudad, setCiudad] = useState<string>('');
   const [ciudadCoords, setCiudadCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [moneda, setMoneda] = useState<MonedaInfo>(getMonedaPorPais('co'));
+  const [precioCombustible, setPrecioCombustible] = useState<number>(moneda.precioCombustibleEstimado);
   const geoWatchId = useRef<number | null>(null);
 
   const requestGPS = useCallback(() => {
@@ -55,17 +55,11 @@ export function App() {
         const { ciudad: cityName, countryCode } = await obtenerCiudadDesdeCoords(latitude, longitude);
         const loc = await geocodificacionReversa(latitude, longitude);
 
-        // Actualizar moneda según país detectado
+        // Actualizar moneda y precio de gasolina según país detectado
         if (countryCode) {
           const monedaDetectada = getMonedaPorPais(countryCode);
           setMoneda(monedaDetectada);
-          // Actualizar config con precio de combustible local
-          setConfig(prev => ({
-            ...prev,
-            precioCombustiblePorLitro: monedaDetectada.precioCombustibleEstimado,
-            costoDesgastePorKm: monedaDetectada.costoDesgasteEstimado,
-            moneda: monedaDetectada.codigo,
-          }));
+          setPrecioCombustible(monedaDetectada.precioCombustibleEstimado);
         }
 
         setCiudad(cityName ?? 'Tu ubicación');
@@ -93,23 +87,17 @@ export function App() {
     if (countryCode) {
       const m = getMonedaPorPais(countryCode);
       setMoneda(m);
-      setConfig(prev => ({
-        ...prev,
-        precioCombustiblePorLitro: m.precioCombustibleEstimado,
-        costoDesgastePorKm: m.costoDesgasteEstimado,
-        moneda: m.codigo,
-      }));
+      setPrecioCombustible(m.precioCombustibleEstimado);
     }
     setGeoStep('ready');
   }, []);
 
-  // ── Motorcycles ────────────────────────────────────────────────────────────
-  const [motocicletas, setMotocicletas] = useState<Motocicleta[]>(MOTOCICLETAS_LOCAL_DB);
-  const [motoSeleccionada, setMotoSeleccionada] = useState<Motocicleta | null>(MOTOCICLETAS_LOCAL_DB[0]);
+  // ── Vehicles ──────────────────────────────────────────────────────────────
+  const [vehiculos, setVehiculos] = useState<Vehiculo[]>(VEHICULOS_LOCAL_DB);
+  const [vehiculoSeleccionado, setVehiculoSeleccionado] = useState<Vehiculo | null>(VEHICULOS_LOCAL_DB[0]);
   const [cargandoIA, setCargandoIA] = useState(false);
 
-  // ── Config ─────────────────────────────────────────────────────────────────
-  const [config, setConfig] = useState<ConfiguracionUsuario>(CONFIGURACION_DEFECTO);
+  // ── Settings ──────────────────────────────────────────────────────────────
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // ── Locations & Route ──────────────────────────────────────────────────────
@@ -118,13 +106,6 @@ export function App() {
   const [ruta, setRuta] = useState<RouteResult | null>(null);
   const [rutaCoordenadas, setRutaCoordenadas] = useState<LatLngTuple[]>([]);
   const [cargandoRuta, setCargandoRuta] = useState(false);
-
-  // ── Trip params ────────────────────────────────────────────────────────────
-  const [tipoTrayecto, setTipoTrayecto] = useState<TipoTrayecto>('solo_ida');
-  const [kilometrosExtra, setKilometrosExtra] = useState<number>(0);
-
-  // ── Results ────────────────────────────────────────────────────────────────
-  const [resultadoActual, setResultadoActual] = useState<ResultadoCalculo | null>(null);
 
   // ── Derived map coords ─────────────────────────────────────────────────────
   const origenCoord: LatLngTuple | null = origenLoc ? [origenLoc.lat, origenLoc.lon] : null;
@@ -152,40 +133,29 @@ export function App() {
 
   useEffect(() => { calcularRuta(); }, [calcularRuta]);
 
-  // ── Recalculate profitability ──────────────────────────────────────────────
-  useEffect(() => {
-    if (!motoSeleccionada || !ruta || ruta.distanciaKm <= 0) {
-      setResultadoActual(null);
-      return;
-    }
-    const res = calcularRentabilidadCarrera(
-      {
-        motoId: motoSeleccionada.id,
-        origen: origenLoc?.name ?? 'Origen',
-        destino: destinoLoc?.name ?? 'Destino',
-        tipoTrayecto,
-        kilometrosBase: ruta.distanciaKm,
-        kilometrosExtra,
-      },
-      motoSeleccionada,
-      config
+  // ── Fuel cost ──────────────────────────────────────────────────────────────
+  const consumo = useMemo(() => {
+    if (!vehiculoSeleccionado || !ruta || ruta.distanciaKm <= 0) return null;
+    return calcularConsumoCombustible(
+      ruta.distanciaKm,
+      vehiculoSeleccionado.consumoKmPorLitro,
+      precioCombustible
     );
-    setResultadoActual(res);
-  }, [motoSeleccionada, ruta, tipoTrayecto, kilometrosExtra, config, origenLoc, destinoLoc]);
+  }, [vehiculoSeleccionado, ruta, precioCombustible]);
 
-  const [motoNoEncontrada, setMotoNoEncontrada] = useState(false);
+  const [vehiculoNoEncontrado, setVehiculoNoEncontrado] = useState(false);
 
   // ── IA lookup ──────────────────────────────────────────────────────────────
   const handleConsultarIA = async (modelo: string) => {
     setCargandoIA(true);
-    setMotoNoEncontrada(false);
+    setVehiculoNoEncontrado(false);
     try {
       const nueva = await consultarEspecificacionesConIA(modelo);
-      setMotocicletas((prev) => [nueva, ...prev]);
-      setMotoSeleccionada(nueva);
+      setVehiculos((prev) => [nueva, ...prev]);
+      setVehiculoSeleccionado(nueva);
     } catch (e) {
       console.error('Error IA:', e);
-      setMotoNoEncontrada(true);
+      setVehiculoNoEncontrado(true);
     } finally {
       setCargandoIA(false);
     }
@@ -230,21 +200,13 @@ export function App() {
       {/* ── HEADER ──────────────────────────────────────────────────────────── */}
       <header className="absolute top-0 left-0 right-0 z-20 pointer-events-none">
         <div className="flex items-center justify-between px-3 pt-3">
-          <div className="pointer-events-auto flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--bg-surface)]/90 backdrop-blur-md border border-[var(--border-color)] shadow-lg">
-            <div className="w-7 h-7 rounded-lg bg-[var(--text-primary)] text-[var(--bg-surface)] flex items-center justify-center">
-              <Bike className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-sm font-bold text-[var(--text-primary)] tracking-tight">TripCalc</span>
-              {ciudad && (
-                <div className="flex items-center gap-0.5">
-                  <MapPin className="w-2.5 h-2.5 text-[var(--accent)]" />
-                  <span className="text-[10px] text-[var(--text-secondary)] font-medium">
-                    {ciudad} · {moneda.codigo}
-                  </span>
-                </div>
-              )}
-            </div>
+          <div className="pointer-events-auto flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[var(--bg-surface)]/90 backdrop-blur-md border border-[var(--border-color)] shadow-lg">
+            {vehiculoSeleccionado?.tipo === 'carro' ? <Car className="w-4 h-4 text-[var(--accent)] shrink-0" /> : <Bike className="w-4 h-4 text-[var(--accent)] shrink-0" />}
+            {ciudad && (
+              <span className="text-xs font-bold text-[var(--text-primary)]">
+                {ciudad} · {moneda.codigo}
+              </span>
+            )}
           </div>
 
           <div className="pointer-events-auto flex items-center gap-1.5">
@@ -258,7 +220,7 @@ export function App() {
             <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-2.5 rounded-xl bg-[var(--bg-surface)]/90 backdrop-blur-md border border-[var(--border-color)] shadow-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-              title="Configurar costos"
+              title="Configurar precio de gasolina"
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -318,6 +280,7 @@ export function App() {
               iconColor="#22c55e"
               biasLat={ciudadCoords?.lat}
               biasLon={ciudadCoords?.lon}
+              ciudad={ciudad}
             />
             <LocationSearch
               label="Destino"
@@ -328,6 +291,7 @@ export function App() {
               iconColor="#ef4444"
               biasLat={ciudadCoords?.lat}
               biasLon={ciudadCoords?.lon}
+              ciudad={ciudad}
             />
           </div>
 
@@ -340,57 +304,15 @@ export function App() {
             Mantén presionado y arrastra los pines del mapa para ajustar el punto exacto
           </div>
 
-          {/* Selector de moto */}
-          <MotorcycleSelector
-            motocicletas={motocicletas}
-            motoSeleccionada={motoSeleccionada}
-            onSeleccionarMoto={setMotoSeleccionada}
+          {/* Selector de vehículo */}
+          <VehicleSelector
+            vehiculos={vehiculos}
+            vehiculoSeleccionado={vehiculoSeleccionado}
+            onSeleccionarVehiculo={setVehiculoSeleccionado}
             onConsultarIA={handleConsultarIA}
             cargandoIA={cargandoIA}
-            motoNoEncontrada={motoNoEncontrada}
+            vehiculoNoEncontrado={vehiculoNoEncontrado}
           />
-
-          {/* Tipo de recorrido */}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
-              Tipo de recorrido
-            </label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {([
-                { key: 'solo_ida' as TipoTrayecto, label: 'Solo ida', iconEl: <><span>A</span><ArrowRight className="w-3 h-3" /><span>B</span></> },
-                { key: 'ida_y_regreso' as TipoTrayecto, label: 'Ida y regreso', iconEl: <><span>A</span><RefreshCw className="w-3 h-3" /><span>A</span></> },
-                { key: 'regreso_libre' as TipoTrayecto, label: 'Regreso libre', iconEl: <><span>A</span><Undo2 className="w-3 h-3" /><span>B~</span></> },
-              ]).map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  onClick={() => setTipoTrayecto(opt.key)}
-                  className={`p-2 rounded-lg border text-center transition-all ${
-                    tipoTrayecto === opt.key
-                      ? 'border-[var(--accent)] bg-blue-500/10 text-[var(--accent)] font-semibold'
-                      : 'border-[var(--border-color)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]'
-                  }`}
-                >
-                  <div className="flex items-center justify-center gap-1 text-[11px] font-medium">{opt.iconEl}</div>
-                  <span className="text-[10px] block mt-0.5">{opt.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Km extra */}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">
-              Kilómetros extra
-            </label>
-            <input
-              type="number" min="0" step="0.5"
-              className="notion-input text-sm font-medium"
-              placeholder="0 (desvíos, vueltas adicionales...)"
-              value={kilometrosExtra || ''}
-              onChange={(e) => setKilometrosExtra(parseFloat(e.target.value) || 0)}
-            />
-          </div>
 
           {/* Info de ruta */}
           {ruta && (
@@ -402,11 +324,12 @@ export function App() {
             </div>
           )}
 
-          {/* Resultados */}
-          {resultadoActual && (
-            <ProfitabilityCard
-              resultado={resultadoActual}
-              duracionMin={ruta?.duracionMin}
+          {/* Consumo de gasolina */}
+          {consumo && ruta && vehiculoSeleccionado && (
+            <FuelCostCard
+              distanciaKm={ruta.distanciaKm}
+              vehiculo={vehiculoSeleccionado}
+              precioCombustible={precioCombustible}
               moneda={moneda}
             />
           )}
@@ -417,8 +340,9 @@ export function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        config={config}
-        onSaveConfig={setConfig}
+        precioCombustible={precioCombustible}
+        moneda={moneda}
+        onSave={setPrecioCombustible}
       />
     </div>
   );

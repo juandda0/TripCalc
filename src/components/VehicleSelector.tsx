@@ -1,15 +1,15 @@
 import React from 'react';
-import type { Motocicleta } from '../types/tripcalc';
-import { Bike, Check, Loader2, Search, AlertCircle } from 'lucide-react';
+import type { Vehiculo } from '../types/tripcalc';
+import { Bike, Car, Check, Loader2, Search, AlertCircle } from 'lucide-react';
 
-interface MotorcycleSelectorProps {
-  motocicletas: Motocicleta[];
-  motoSeleccionada: Motocicleta | null;
-  onSeleccionarMoto: (moto: Motocicleta) => void;
+interface VehicleSelectorProps {
+  vehiculos: Vehiculo[];
+  vehiculoSeleccionado: Vehiculo | null;
+  onSeleccionarVehiculo: (vehiculo: Vehiculo) => void;
   onConsultarIA: (modelo: string) => Promise<void>;
   cargandoIA: boolean;
   /** Indica si la última búsqueda no encontró resultados válidos */
-  motoNoEncontrada?: boolean;
+  vehiculoNoEncontrado?: boolean;
 }
 
 /** Distancia de Levenshtein simplificada para fuzzy matching */
@@ -27,56 +27,56 @@ function levenshtein(a: string, b: string): number {
   return dp[m][n];
 }
 
-/** Ordena las motos por similitud al término de búsqueda */
-function filtrarYOrdenarMotos(motos: Motocicleta[], termino: string): Motocicleta[] {
-  if (!termino.trim()) return motos;
+/** Ordena los vehículos por similitud al término de búsqueda */
+function filtrarYOrdenarVehiculos(vehiculos: Vehiculo[], termino: string): Vehiculo[] {
+  if (!termino.trim()) return vehiculos;
   const t = termino.toLowerCase().trim();
 
   // Exact / contains match first
-  const exactas = motos.filter(m =>
-    `${m.marca} ${m.modelo}`.toLowerCase().includes(t) ||
-    m.modelo.toLowerCase().includes(t) ||
-    m.marca.toLowerCase().includes(t)
+  const exactas = vehiculos.filter(v =>
+    `${v.marca} ${v.modelo}`.toLowerCase().includes(t) ||
+    v.modelo.toLowerCase().includes(t) ||
+    v.marca.toLowerCase().includes(t)
   );
 
   if (exactas.length > 0) return exactas;
 
   // Fuzzy: calcular distancia normalizada a marca+modelo
-  const conDistancia = motos.map(m => {
-    const nombre = `${m.marca} ${m.modelo}`.toLowerCase();
+  const conDistancia = vehiculos.map(v => {
+    const nombre = `${v.marca} ${v.modelo}`.toLowerCase();
     const dist = levenshtein(t, nombre.substring(0, t.length + 4));
-    return { moto: m, dist };
+    return { vehiculo: v, dist };
   });
 
   conDistancia.sort((a, b) => a.dist - b.dist);
 
   // Solo retornar si la distancia es razonable (≤ 4 errores tipográficos)
-  return conDistancia.filter(x => x.dist <= 4).map(x => x.moto);
+  return conDistancia.filter(x => x.dist <= 4).map(x => x.vehiculo);
 }
 
-export const MotorcycleSelector: React.FC<MotorcycleSelectorProps> = ({
-  motocicletas,
-  motoSeleccionada,
-  onSeleccionarMoto,
+export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
+  vehiculos,
+  vehiculoSeleccionado,
+  onSeleccionarVehiculo,
   onConsultarIA,
   cargandoIA,
-  motoNoEncontrada,
+  vehiculoNoEncontrado,
 }) => {
   const [busqueda, setBusqueda] = React.useState('');
   const [openDropdown, setOpenDropdown] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
   const opcionesFiltradas = React.useMemo(
-    () => filtrarYOrdenarMotos(motocicletas, busqueda),
-    [busqueda, motocicletas]
+    () => filtrarYOrdenarVehiculos(vehiculos, busqueda),
+    [busqueda, vehiculos]
   );
 
   // El usuario escribió algo concreto pero no hay coincidencias ni siquiera fuzzy
   const sinCoincidencias = busqueda.trim().length >= 2 && opcionesFiltradas.length === 0;
 
-  const handleSelect = (moto: Motocicleta) => {
-    onSeleccionarMoto(moto);
-    setBusqueda(`${moto.marca} ${moto.modelo}`);
+  const handleSelect = (vehiculo: Vehiculo) => {
+    onSeleccionarVehiculo(vehiculo);
+    setBusqueda(`${vehiculo.marca} ${vehiculo.modelo}`);
     setOpenDropdown(false);
   };
 
@@ -97,22 +97,30 @@ export const MotorcycleSelector: React.FC<MotorcycleSelectorProps> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const renderIcono = (tipo: 'moto' | 'carro', className: string) => {
+    return tipo === 'carro' ? <Car className={className} /> : <Bike className={className} />;
+  };
+
   return (
     <div ref={containerRef} className="relative">
       <label className="block text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-1">
-        Motocicleta
+        Vehículo (Moto o Carro)
       </label>
 
-      {/* Input wrapper — la posición del icono es FUERA del input */}
+      {/* Input wrapper */}
       <div className="relative flex items-center">
         <div className="pointer-events-none absolute left-0 inset-y-0 flex items-center pl-2.5">
-          <Bike className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+          {vehiculoSeleccionado ? (
+            renderIcono(vehiculoSeleccionado.tipo, "w-4 h-4 text-[var(--text-muted)] shrink-0")
+          ) : (
+            <Bike className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+          )}
         </div>
         <input
           type="text"
           style={{ paddingLeft: '2rem', paddingRight: cargandoIA ? '2rem' : '0.75rem' }}
           className="notion-input w-full text-sm font-medium"
-          placeholder="Ej: NKD 125, Pulsar NS200, XTZ 150..."
+          placeholder="Ej: NKD 125, Spark GT, Logan, XTZ 150..."
           value={busqueda}
           onChange={(e) => { setBusqueda(e.target.value); setOpenDropdown(true); }}
           onFocus={() => setOpenDropdown(true)}
@@ -125,27 +133,29 @@ export const MotorcycleSelector: React.FC<MotorcycleSelectorProps> = ({
         )}
       </div>
 
-      {/* Moto activa seleccionada */}
-      {motoSeleccionada && !openDropdown && (
+      {/* Vehículo activo seleccionado */}
+      {vehiculoSeleccionado && !openDropdown && (
         <div className="mt-2 px-3 py-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-subtle)] flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] flex items-center justify-center text-[10px] font-bold text-[var(--text-secondary)] shrink-0">
-            {motoSeleccionada.marca.slice(0, 2).toUpperCase()}
-          </div>
+          {vehiculoSeleccionado.tipo === 'carro' ? <Car className="w-5 h-5 text-[var(--text-secondary)] shrink-0" /> : <Bike className="w-5 h-5 text-[var(--text-secondary)] shrink-0" />}
           <div className="flex-1 min-w-0">
             <div className="text-xs font-semibold text-[var(--text-primary)] truncate">
-              {motoSeleccionada.marca} {motoSeleccionada.modelo}
+              {vehiculoSeleccionado.marca} {vehiculoSeleccionado.modelo}
             </div>
             <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
-              <span>{motoSeleccionada.cilindraje} cc</span>
-              <span>·</span>
-              <span className="text-[var(--text-secondary)] font-medium">
-                {motoSeleccionada.consumoKmPorLitro} km/L
+              <span>
+                {vehiculoSeleccionado.tipo === 'carro' 
+                  ? `${(vehiculoSeleccionado.cilindraje / 1000).toFixed(1)}L` 
+                  : `${vehiculoSeleccionado.cilindraje} cc`}
               </span>
               <span>·</span>
-              <span>Tanque {motoSeleccionada.capacidadTanque} L</span>
+              <span className="text-[var(--text-secondary)] font-medium">
+                {vehiculoSeleccionado.consumoKmPorLitro} km/L
+              </span>
+              <span>·</span>
+              <span>Tanque {vehiculoSeleccionado.capacidadTanque} L</span>
             </div>
           </div>
-          {motoSeleccionada.fuente === 'ia_gemini' && (
+          {vehiculoSeleccionado.fuente === 'ia_gemini' && (
             <span className="text-[10px] font-medium text-[var(--text-muted)] border border-[var(--border-color)] px-1.5 py-0.5 rounded-md shrink-0">
               Búsqueda
             </span>
@@ -153,12 +163,12 @@ export const MotorcycleSelector: React.FC<MotorcycleSelectorProps> = ({
         </div>
       )}
 
-      {/* Moto no encontrada (resultado de búsqueda fallida) */}
-      {motoNoEncontrada && !openDropdown && (
+      {/* Vehículo no encontrado (resultado de búsqueda fallida) */}
+      {vehiculoNoEncontrado && !openDropdown && (
         <div className="mt-2 px-3 py-2.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-subtle)] flex items-center gap-2.5">
           <AlertCircle className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
           <p className="text-xs text-[var(--text-secondary)]">
-            Moto no encontrada. Verifica el nombre e intenta de nuevo.
+            Vehículo no encontrado. Verifica el nombre e intenta de nuevo.
           </p>
         </div>
       )}
@@ -174,22 +184,25 @@ export const MotorcycleSelector: React.FC<MotorcycleSelectorProps> = ({
                   <p className="text-[10px] text-[var(--text-muted)]">Resultados más parecidos a "{busqueda}"</p>
                 </div>
               )}
-              {opcionesFiltradas.map((moto) => (
+              {opcionesFiltradas.map((vehiculo) => (
                 <button
-                  key={moto.id}
+                  key={vehiculo.id}
                   type="button"
                   className="w-full text-left px-3 py-2.5 hover:bg-[var(--bg-subtle)] transition-colors flex items-center justify-between border-b border-[var(--border-color)] last:border-b-0"
-                  onMouseDown={(e) => { e.preventDefault(); handleSelect(moto); }}
+                  onMouseDown={(e) => { e.preventDefault(); handleSelect(vehiculo); }}
                 >
                   <div>
-                    <div className="text-sm font-medium text-[var(--text-primary)]">
-                      {moto.marca} {moto.modelo}
+                    <div className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-1.5">
+                      {vehiculo.tipo === 'carro' ? <Car className="w-3.5 h-3.5 text-[var(--text-muted)]" /> : <Bike className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
+                      {vehiculo.marca} {vehiculo.modelo}
                     </div>
-                    <div className="text-[11px] text-[var(--text-muted)]">
-                      {moto.cilindraje} cc · {moto.consumoKmPorLitro} km/L
+                    <div className="text-[11px] text-[var(--text-muted)] ml-5">
+                      {vehiculo.tipo === 'carro' 
+                        ? `${(vehiculo.cilindraje / 1000).toFixed(1)}L` 
+                        : `${vehiculo.cilindraje} cc`} · {vehiculo.consumoKmPorLitro} km/L
                     </div>
                   </div>
-                  {motoSeleccionada?.id === moto.id && (
+                  {vehiculoSeleccionado?.id === vehiculo.id && (
                     <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
                   )}
                 </button>
@@ -207,15 +220,15 @@ export const MotorcycleSelector: React.FC<MotorcycleSelectorProps> = ({
                 className="w-full py-2 px-3 rounded-lg border border-[var(--border-color)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
               >
                 {cargandoIA ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando moto...</>
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando vehículo...</>
                 ) : (
-                  <><Search className="w-3.5 h-3.5" /> Buscar moto</>
+                  <><Search className="w-3.5 h-3.5" /> Buscar con IA</>
                 )}
               </button>
             </div>
           ) : (
             <div className="px-3 py-2.5 text-xs text-[var(--text-muted)]">
-              Escribe el nombre de tu moto
+              Escribe el nombre de tu vehículo
             </div>
           )}
         </div>

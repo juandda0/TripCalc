@@ -5,6 +5,60 @@ export interface LocationResult {
   displayName: string;
   lat: number;
   lon: number;
+  isAiSuggested?: boolean;
+}
+
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_API_URL = import.meta.env.VITE_GROQ_API_URL;
+
+/**
+ * Consulta la IA (Groq) para corregir ortografía o sugerir lugares parecidos en la ciudad actual o cercanas.
+ */
+export async function corregirUbicacionConIA(
+  query: string,
+  ciudadActual?: string
+): Promise<string[]> {
+  if (!query || query.trim().length < 2) return [];
+
+  const prompt = `Eres un asistente de navegación experto en corregir y expandir nombres de ubicaciones (barrios, parques, avenidas, centros comerciales, aeropuertos) que a veces están mal escritos o incompletos.
+El usuario está buscando una dirección o lugar con el texto: "${query}".
+La ciudad actual en la que se encuentra el usuario es: "${ciudadActual || 'Desconocida'}".
+
+Genera una lista de hasta 3 opciones de búsqueda más probables, detalladas y bien escritas (especificando barrio, ciudad y país si es posible).
+Prioriza la ciudad actual y sus alrededores. Si el lugar no pertenece a la ciudad actual, busca en las ciudades más cercanas.
+
+Responde ÚNICAMENTE con un JSON válido que sea un arreglo de strings, con este formato exacto:
+[
+  "Opción 1 corregida",
+  "Opción 2 corregida",
+  "Opción 3 corregida"
+]`;
+
+  try {
+    const res = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        max_tokens: 150,
+      }),
+    });
+
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content ?? '';
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return [];
+    return JSON.parse(jsonMatch[0]) as string[];
+  } catch (e) {
+    console.warn('Error corregirUbicacionConIA:', e);
+    return [];
+  }
 }
 
 /**
