@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# TripCalc
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Calculadora del gasto de gasolina por trayecto, pensada para el celular. Eliges origen y destino en el mapa, el vehículo (moto o carro) y TripCalc calcula la distancia por la ruta real, los litros que vas a gastar y cuánto cuestan en la moneda de tu país.
 
-Currently, two official plugins are available:
+![TripCalc](docs/capturas/tripcalc.webp)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Qué hace
 
-## React Compiler
+- **Rutas reales.** La distancia sale de la ruta por carretera ([OSRM](https://project-osrm.org/)), no de la línea recta.
+- **Búsqueda de direcciones.** Geocodificación y geocodificación inversa con [Nominatim](https://nominatim.org/) (OpenStreetMap), con prioridad a la ciudad elegida.
+- **Vehículos.** Base local de motos y carros comunes con su consumo (km/L), tanque y autonomía. Si el modelo no está, un LLM (Groq) completa los datos.
+- **Moneda local.** Detecta la moneda y el formato según el país (Colombia, México, Argentina, Chile, Perú y más) y propone un precio por litro editable.
+- **Mapa** con Leaflet y teselas de CARTO, en modo claro y oscuro.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Stack
 
-## Expanding the Oxlint configuration
+React 19 · TypeScript · Vite · Tailwind CSS 4 · Leaflet / react-leaflet · Firebase Hosting
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Correr en local
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+cp .env.example .env   # llena las claves
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Variables de `.env`:
+
+| Variable | Para qué |
+| --- | --- |
+| `VITE_GROQ_API_KEY` | Datos de vehículos que no están en la base local |
+| `VITE_GROQ_API_URL` | Endpoint de Groq (ya viene en el ejemplo) |
+| `VITE_CARTO_API_KEY` | Teselas del mapa de CARTO |
+
+Otros comandos: `npm run build`, `npm run lint` (Oxlint), `npm run preview`.
+
+## Autor
+
+[Juan Diego Díaz Avendaño](https://juandiegodiaz-dev.web.app) · Desarrollador Full-Stack
